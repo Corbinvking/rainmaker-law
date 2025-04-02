@@ -1,62 +1,72 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Scale, Lock, Mail, AlertCircle } from "lucide-react"
+import { Scale, Lock, Mail, AlertCircle, Loader2 } from "lucide-react"
+import { useAuth } from "@/hooks/use-auth"
 
 export default function LoginPage() {
   const router = useRouter()
+  const { signIn, isAuthenticated, isLoading: authLoading, sessionChecked } = useAuth()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [rememberMe, setRememberMe] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (sessionChecked && isAuthenticated) {
+      router.push('/')
+    }
+  }, [sessionChecked, isAuthenticated, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
-    setIsLoading(true)
+    setError("")
 
-    // Basic validation
     if (!email || !password) {
       setError("Please enter both email and password")
-      setIsLoading(false)
       return
     }
 
-    // Mock authentication - in a real app, this would call an API
-    try {
-      // Simulate API call delay
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-
-      // For demo purposes, accept any email with a valid format and any password
-      if (!/^\S+@\S+\.\S+$/.test(email)) {
-        throw new Error("Invalid email format")
-      }
-
-      // Store authentication state in localStorage
-      if (typeof window !== "undefined") {
-        localStorage.setItem("isAuthenticated", "true")
-        localStorage.setItem("userEmail", email)
-        if (rememberMe) {
-          localStorage.setItem("rememberMe", "true")
-        }
-      }
-
-      // Redirect to dashboard
-      router.push("/")
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed. Please try again.")
-    } finally {
-      setIsLoading(false)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      setError("Please enter a valid email address")
+      return
     }
+
+    setIsSubmitting(true)
+    try {
+      const { error: signInError } = await signIn(email, password)
+      if (signInError) {
+        setError(signInError)
+        setPassword("")
+      }
+      if (rememberMe) {
+        localStorage.setItem("rememberMe", "true")
+      }
+    } catch (err) {
+      setError("An unexpected error occurred. Please try again.")
+      setPassword("")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-background to-background/90">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -95,7 +105,7 @@ export default function LoginPage() {
                     className="pl-10"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    disabled={isLoading}
+                    disabled={isSubmitting}
                   />
                 </div>
               </div>
@@ -115,7 +125,7 @@ export default function LoginPage() {
                     className="pl-10"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    disabled={isLoading}
+                    disabled={isSubmitting}
                   />
                 </div>
               </div>
@@ -133,10 +143,10 @@ export default function LoginPage() {
             </CardContent>
 
             <CardFooter>
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? (
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? (
                   <>
-                    <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent"></span>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Signing in...
                   </>
                 ) : (

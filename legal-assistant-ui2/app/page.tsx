@@ -11,33 +11,15 @@ import { Matters } from "@/components/matters"
 import { Messages } from "@/components/messages"
 import { AIAssistantView } from "@/components/ai-assistant-view"
 import { Loader2 } from "lucide-react"
+import { useAuth } from "@/hooks/use-auth"
 
 export default function Home() {
   const router = useRouter()
+  const { isLoading, isAuthenticated, user } = useAuth()
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null)
   const [selectedMatterId, setSelectedMatterId] = useState<string | null>(null)
   const [showAIAssistant, setShowAIAssistant] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
 
-  // Check authentication status on component mount
-  useEffect(() => {
-    const checkAuth = () => {
-      if (typeof window !== "undefined") {
-        const auth = localStorage.getItem("isAuthenticated")
-        if (auth === "true") {
-          setIsAuthenticated(true)
-        } else {
-          router.push("/login")
-        }
-      }
-      setIsLoading(false)
-    }
-
-    checkAuth()
-  }, [router])
-
-  // Listen for the openAIHub and returnToDashboard events
   useEffect(() => {
     const handleOpenAIHub = () => {
       setShowAIAssistant(true)
@@ -67,15 +49,23 @@ export default function Home() {
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <div className="flex flex-col items-center space-y-4">
           <Loader2 className="h-12 w-12 animate-spin text-primary" />
-          <p className="text-lg font-medium">Loading your dashboard...</p>
+          <p className="text-lg font-medium">Loading...</p>
         </div>
       </div>
     )
   }
 
-  // If not authenticated, the useEffect will redirect to login
+  // Redirect to login if not authenticated
   if (!isAuthenticated) {
-    return null
+    router.replace('/login')
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-background">
+        <div className="flex flex-col items-center space-y-4">
+          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+          <p className="text-lg font-medium">Redirecting to login...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
