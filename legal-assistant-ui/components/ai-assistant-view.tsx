@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -24,8 +25,20 @@ import {
   Sparkles,
   UploadCloud,
   Loader2,
+  User,
+  LogOut,
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useRouter } from "next/navigation"
+import { useSupabase } from "@/hooks/useSupabase"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 interface Message {
   id: string
@@ -40,6 +53,8 @@ interface AIAssistantViewProps {
 }
 
 export function AIAssistantView({ onClose }: AIAssistantViewProps) {
+  const router = useRouter()
+  const { supabase } = useSupabase()
   const [activeTab, setActiveTab] = useState("chat")
   const [input, setInput] = useState("")
   const [draftContent, setDraftContent] = useState("")
@@ -151,6 +166,11 @@ export function AIAssistantView({ onClose }: AIAssistantViewProps) {
     }, 2000)
   }
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    router.push('/auth/sign-in')
+  }
+
   return (
     <div className="flex h-full flex-col bg-gradient-to-br from-background to-background/80">
       <div className="flex items-center justify-between border-b p-4 bg-background/95 backdrop-blur-sm shadow-sm">
@@ -160,9 +180,26 @@ export function AIAssistantView({ onClose }: AIAssistantViewProps) {
           </Avatar>
           <h2 className="text-xl font-semibold">Legal AI Assistant</h2>
         </div>
-        <Button variant="outline" onClick={onClose}>
-          Return to Dashboard
-        </Button>
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button className="h-10 w-10 hover:bg-accent hover:text-accent-foreground" title="Profile">
+                <User className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>My Account</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleSignOut}>
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign Out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button className="border border-input bg-background hover:bg-accent hover:text-accent-foreground" onClick={onClose}>
+            Return to Dashboard
+          </Button>
+        </div>
       </div>
 
       <div className="grid flex-1 md:grid-cols-4">
@@ -172,48 +209,48 @@ export function AIAssistantView({ onClose }: AIAssistantViewProps) {
             <h3 className="mb-4 font-medium">AI Tools</h3>
             <div className="space-y-2">
               <Button
-                variant={activeTab === "chat" ? "secondary" : "ghost"}
-                className={`w-full justify-start transition-all ${
+                className={cn(
+                  "w-full justify-start transition-all",
                   activeTab === "chat"
-                    ? "bg-gradient-to-r from-primary/10 to-primary/5 shadow-md"
-                    : "hover:bg-gradient-to-r hover:from-muted hover:to-background"
-                }`}
+                    ? "bg-secondary text-secondary-foreground hover:bg-secondary/80 bg-gradient-to-r from-primary/10 to-primary/5 shadow-md"
+                    : "hover:bg-accent hover:text-accent-foreground hover:bg-gradient-to-r hover:from-muted hover:to-background"
+                )}
                 onClick={() => setActiveTab("chat")}
               >
                 <Sparkles className={`mr-2 h-4 w-4 ${activeTab === "chat" ? "text-primary" : ""}`} />
                 AI Chat
               </Button>
               <Button
-                variant={activeTab === "draft" ? "secondary" : "ghost"}
-                className={`w-full justify-start transition-all ${
+                className={cn(
+                  "w-full justify-start transition-all",
                   activeTab === "draft"
-                    ? "bg-gradient-to-r from-primary/10 to-primary/5 shadow-md"
-                    : "hover:bg-gradient-to-r hover:from-muted hover:to-background"
-                }`}
+                    ? "bg-secondary text-secondary-foreground hover:bg-secondary/80 bg-gradient-to-r from-primary/10 to-primary/5 shadow-md"
+                    : "hover:bg-accent hover:text-accent-foreground hover:bg-gradient-to-r hover:from-muted hover:to-background"
+                )}
                 onClick={() => setActiveTab("draft")}
               >
                 <PenTool className={`mr-2 h-4 w-4 ${activeTab === "draft" ? "text-primary" : ""}`} />
                 Document Drafting
               </Button>
               <Button
-                variant={activeTab === "translate" ? "secondary" : "ghost"}
-                className={`w-full justify-start transition-all ${
+                className={cn(
+                  "w-full justify-start transition-all",
                   activeTab === "translate"
-                    ? "bg-gradient-to-r from-primary/10 to-primary/5 shadow-md"
-                    : "hover:bg-gradient-to-r hover:from-muted hover:to-background"
-                }`}
+                    ? "bg-secondary text-secondary-foreground hover:bg-secondary/80 bg-gradient-to-r from-primary/10 to-primary/5 shadow-md"
+                    : "hover:bg-accent hover:text-accent-foreground hover:bg-gradient-to-r hover:from-muted hover:to-background"
+                )}
                 onClick={() => setActiveTab("translate")}
               >
                 <Languages className={`mr-2 h-4 w-4 ${activeTab === "translate" ? "text-primary" : ""}`} />
                 Translation
               </Button>
               <Button
-                variant={activeTab === "database" ? "secondary" : "ghost"}
-                className={`w-full justify-start transition-all ${
+                className={cn(
+                  "w-full justify-start transition-all",
                   activeTab === "database"
-                    ? "bg-gradient-to-r from-primary/10 to-primary/5 shadow-md"
-                    : "hover:bg-gradient-to-r hover:from-muted hover:to-background"
-                }`}
+                    ? "bg-secondary text-secondary-foreground hover:bg-secondary/80 bg-gradient-to-r from-primary/10 to-primary/5 shadow-md"
+                    : "hover:bg-accent hover:text-accent-foreground hover:bg-gradient-to-r hover:from-muted hover:to-background"
+                )}
                 onClick={() => setActiveTab("database")}
               >
                 <Database className={`mr-2 h-4 w-4 ${activeTab === "database" ? "text-primary" : ""}`} />

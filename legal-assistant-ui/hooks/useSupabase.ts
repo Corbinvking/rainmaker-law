@@ -9,49 +9,100 @@ export function useSupabase() {
 
   useEffect(() => {
     const getUser = async () => {
-      const { data: { session }, error } = await supabase.auth.getSession()
-      
-      if (error) {
-        console.error('Error fetching session:', error.message)
-        setLoading(false)
-        return
-      }
-
-      if (session?.user?.id) {
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', session.user.id)
-          .single()
-
-        if (userError) {
-          console.error('Error fetching user data:', userError.message)
-        } else {
-          setUser(userData)
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+        
+        if (sessionError) {
+          console.error('Error fetching session:', sessionError.message)
+          setLoading(false)
+          return
         }
-      }
 
-      setLoading(false)
+        if (session?.user?.id) {
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', session.user.id)
+            .single()
+
+          if (userError) {
+            if (userError.message === 'JSON object requested, multiple (or no) rows returned') {
+              // Create user record if it doesn't exist
+              const { data: newUser, error: createError } = await supabase
+                .from('users')
+                .insert([
+                  {
+                    id: session.user.id,
+                    email: session.user.email,
+                    full_name: session.user.email?.split('@')[0] || 'New User',
+                    role: 'attorney'
+                  }
+                ])
+                .select()
+                .single()
+
+              if (createError) {
+                console.error('Error creating user record:', createError.message)
+              } else {
+                setUser(newUser)
+              }
+            } else {
+              console.error('Error fetching user data:', userError.message)
+            }
+          } else {
+            setUser(userData)
+          }
+        }
+      } catch (error) {
+        console.error('Error in getUser:', error)
+      } finally {
+        setLoading(false)
+      }
     }
 
     // Initial fetch
     getUser()
 
     // Subscribe to auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user?.id) {
-        supabase
-          .from('users')
-          .select('*')
-          .eq('id', session.user.id)
-          .single()
-          .then(({ data, error }) => {
-            if (error) {
-              console.error('Error fetching user data:', error.message)
+        try {
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', session.user.id)
+            .single()
+
+          if (userError) {
+            if (userError.message === 'JSON object requested, multiple (or no) rows returned') {
+              // Create user record if it doesn't exist
+              const { data: newUser, error: createError } = await supabase
+                .from('users')
+                .insert([
+                  {
+                    id: session.user.id,
+                    email: session.user.email,
+                    full_name: session.user.email?.split('@')[0] || 'New User',
+                    role: 'attorney'
+                  }
+                ])
+                .select()
+                .single()
+
+              if (createError) {
+                console.error('Error creating user record:', createError.message)
+              } else {
+                setUser(newUser)
+              }
             } else {
-              setUser(data)
+              console.error('Error fetching user data:', userError.message)
             }
-          })
+          } else {
+            setUser(userData)
+          }
+        } catch (error) {
+          console.error('Error in auth state change:', error)
+        }
       } else {
         setUser(null)
       }
