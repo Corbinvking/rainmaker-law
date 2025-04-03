@@ -20,7 +20,20 @@ import {
   Briefcase,
   ArrowLeft,
   Paperclip,
+  Settings,
 } from "lucide-react"
+import { AIService } from "@/lib/ai-service"
+import { OpenRouterMessage } from "@/types/ai"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 
 interface Message {
   id: string
@@ -33,6 +46,7 @@ interface Message {
 interface AIAssistantViewProps {
   onClose: () => void
   onSelectClient?: (clientId: string) => void
+  selectedTool?: string
 }
 
 // AI tools data
@@ -103,14 +117,29 @@ const recentQueries = [
   { id: "4", query: "Translate the Martinez agreement to Spanish", timestamp: "1 week ago" },
 ]
 
-export function AIAssistantView({ onClose, onSelectClient }: AIAssistantViewProps) {
+export function AIAssistantView({ onClose, onSelectClient, selectedTool }: AIAssistantViewProps) {
   const [activeView, setActiveView] = useState<"chat" | "tool" | "home">("home")
   const [activeTool, setActiveTool] = useState<string | null>(null)
   const [activeCategory, setActiveCategory] = useState<string>("featured")
   const [input, setInput] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
+  const [apiKey, setApiKey] = useState("")
+  const [useRealAI, setUseRealAI] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const aiService = useRef(new AIService())
+
+  // Load AI settings on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedKey = window.localStorage.getItem('OPENROUTER_API_KEY') || ""
+      const savedUseRealAI = window.localStorage.getItem('USE_REAL_AI') === 'true'
+      setApiKey(savedKey)
+      setUseRealAI(savedUseRealAI)
+      aiService.current.setApiKey(savedKey)
+      aiService.current.setUseRealAI(savedUseRealAI)
+    }
+  }, [])
 
   // Scroll to bottom of messages when new message is added
   useEffect(() => {
@@ -121,7 +150,16 @@ export function AIAssistantView({ onClose, onSelectClient }: AIAssistantViewProp
   const filteredTools =
     activeCategory === "featured" ? aiTools : aiTools.filter((tool) => tool.category === activeCategory)
 
-  const handleSendMessage = () => {
+  const handleSaveSettings = () => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('OPENROUTER_API_KEY', apiKey)
+      window.localStorage.setItem('USE_REAL_AI', useRealAI.toString())
+    }
+    aiService.current.setApiKey(apiKey)
+    aiService.current.setUseRealAI(useRealAI)
+  }
+
+  const handleSendMessage = async () => {
     if (!input.trim()) return
 
     // Add user message
@@ -136,31 +174,39 @@ export function AIAssistantView({ onClose, onSelectClient }: AIAssistantViewProp
     setInput("")
     setIsProcessing(true)
 
-    // Simulate AI response after a delay
-    setTimeout(() => {
+    try {
+      // Prepare messages for AI service
+      const messageHistory: OpenRouterMessage[] = messages.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }))
+      messageHistory.push({ role: "user", content: input })
+
+      // Get AI response
+      const response = await aiService.current.sendMessage(messageHistory)
+      
+      // Create AI message from response
       const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: generateAIResponse(input),
+        id: response.id,
+        content: response.choices[0].message.content,
         role: "assistant",
         created_at: new Date(),
       }
+      
       setMessages((prev) => [...prev, aiMessage])
+    } catch (error) {
+      console.error('Error getting AI response:', error)
+      
+      // Fallback to mock response in case of error
+      const fallbackMessage: Message = {
+        id: Date.now().toString(),
+        content: "I apologize, but I'm having trouble processing your request. Could you please try again?",
+        role: "assistant",
+        created_at: new Date(),
+      }
+      setMessages((prev) => [...prev, fallbackMessage])
+    } finally {
       setIsProcessing(false)
-    }, 1500)
-  }
-
-  // Simple mock AI response generator
-  const generateAIResponse = (query: string): string => {
-    if (query.toLowerCase().includes("draft") || query.toLowerCase().includes("write")) {
-      return "I'd be happy to help you draft that document. Would you like me to use a specific template or create something custom? Please provide any specific details you'd like to include."
-    } else if (query.toLowerCase().includes("translate")) {
-      return "I can translate that for you. What language would you like me to translate it to? Once you specify, I can begin the translation process."
-    } else if (query.toLowerCase().includes("search") || query.toLowerCase().includes("find")) {
-      return "I'll search your database for that information. Based on your query, I found several relevant documents. Would you like me to summarize them or provide the full details?"
-    } else if (query.toLowerCase().includes("case") || query.toLowerCase().includes("precedent")) {
-      return "I can help you find relevant case law. To provide the most accurate results, could you specify the jurisdiction and the legal issue you're researching? This will help me narrow down the most applicable precedents."
-    } else {
-      return "I understand your request. As your legal AI assistant, I can help with drafting documents, translating content, searching your database, and providing legal insights. Would you like me to elaborate on any specific aspect of your query?"
     }
   }
 
@@ -181,6 +227,12 @@ export function AIAssistantView({ onClose, onSelectClient }: AIAssistantViewProp
       ])
     }
   }
+
+  useEffect(() => {
+    if (selectedTool) {
+      handleToolSelect(selectedTool)
+    }
+  }, [selectedTool])
 
   return (
     <div className="flex h-screen w-full flex-col bg-background text-foreground overflow-hidden">
@@ -204,6 +256,42 @@ export function AIAssistantView({ onClose, onSelectClient }: AIAssistantViewProp
         <Button variant="outline" onClick={onClose}>
           Return to Dashboard
         </Button>
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="ghost" size="sm">
+              <Settings className="h-4 w-4" />
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>AI Settings</DialogTitle>
+              <DialogDescription>
+                Configure your OpenRouter API settings for AI chat functionality.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="apiKey">OpenRouter API Key</Label>
+                <Input
+                  id="apiKey"
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="Enter your OpenRouter API key"
+                />
+              </div>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="useRealAI"
+                  checked={useRealAI}
+                  onCheckedChange={setUseRealAI}
+                />
+                <Label htmlFor="useRealAI">Use Real AI</Label>
+              </div>
+              <Button onClick={handleSaveSettings}>Save Settings</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {activeView === "home" && (

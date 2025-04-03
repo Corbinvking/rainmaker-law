@@ -5,9 +5,21 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { ChevronLeft, ChevronRight, Send, FileText, Plus, Sparkles } from "lucide-react"
+import { ChevronLeft, ChevronRight, Send, FileText, Plus, Sparkles, Settings } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { AIService } from "@/lib/ai-service"
+import { OpenRouterMessage } from "@/types/ai"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 
 interface Message {
   id: string
@@ -120,7 +132,23 @@ export function AIChat({ selectedMatterId }: AIChatProps) {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [isNewConversation, setIsNewConversation] = useState(true)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [apiKey, setApiKey] = useState("")
+  const [useRealAI, setUseRealAI] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const aiService = useRef(new AIService())
+
+  // Load AI settings on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedKey = window.localStorage.getItem('OPENROUTER_API_KEY') || ""
+      const savedUseRealAI = window.localStorage.getItem('USE_REAL_AI') === 'true'
+      setApiKey(savedKey)
+      setUseRealAI(savedUseRealAI)
+      aiService.current.setApiKey(savedKey)
+      aiService.current.setUseRealAI(savedUseRealAI)
+    }
+  }, [])
 
   // Update active matter when selectedMatterId changes
   useEffect(() => {
@@ -159,7 +187,12 @@ export function AIChat({ selectedMatterId }: AIChatProps) {
   // Filter conversations by matter
   const filteredConversations = conversations.filter((conv) => !activeMatterId || conv.matter_id === activeMatterId)
 
-  const handleSendMessage = () => {
+  const handleSaveSettings = () => {
+    aiService.current.setApiKey(apiKey)
+    aiService.current.setUseRealAI(useRealAI)
+  }
+
+  const handleSendMessage = async () => {
     if (!input.trim()) return
 
     // Add user message
@@ -172,22 +205,44 @@ export function AIChat({ selectedMatterId }: AIChatProps) {
 
     setMessages((prev) => [...prev, userMessage])
     setInput("")
+    setIsProcessing(true)
 
-    // Simulate AI response
-    setTimeout(() => {
+    try {
+      // Prepare messages for AI service
+      const messageHistory: OpenRouterMessage[] = messages.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }))
+      messageHistory.push({ role: "user", content: input })
+
+      // Get AI response
+      const response = await aiService.current.sendMessage(messageHistory)
+      
+      // Create AI message from response
       const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content:
-          "I'm analyzing your question and searching through relevant legal resources. As your legal AI assistant, I can help with document drafting, legal research, and providing insights on your matters. Would you like me to elaborate on any specific aspect of your query?",
+        id: response.id,
+        content: response.choices[0].message.content,
         role: "assistant",
         created_at: new Date(),
       }
+      
       setMessages((prev) => [...prev, aiMessage])
-    }, 1000)
-
-    // If this is a new conversation, mark it as started
-    if (isNewConversation) {
-      setIsNewConversation(false)
+    } catch (error) {
+      console.error('Error getting AI response:', error)
+      
+      // Fallback to mock response in case of error
+      const fallbackMessage: Message = {
+        id: Date.now().toString(),
+        content: "I apologize, but I'm having trouble processing your request. Could you please try again?",
+        role: "assistant",
+        created_at: new Date(),
+      }
+      setMessages((prev) => [...prev, fallbackMessage])
+    } finally {
+      setIsProcessing(false)
+      if (isNewConversation) {
+        setIsNewConversation(false)
+      }
     }
   }
 
@@ -211,15 +266,49 @@ export function AIChat({ selectedMatterId }: AIChatProps) {
         {!collapsed && (
           <div className="flex items-center space-x-2">
             <h2 className="text-lg font-semibold">AI Assistant</h2>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="ghost" size="sm" className="ml-2">
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>AI Settings</DialogTitle>
+                  <DialogDescription>
+                    Configure your OpenRouter API settings for AI chat functionality.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="apiKey">OpenRouter API Key</Label>
+                    <Input
+                      id="apiKey"
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder="Enter your OpenRouter API key"
+                    />
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="useRealAI"
+                      checked={useRealAI}
+                      onCheckedChange={setUseRealAI}
+                    />
+                    <Label htmlFor="useRealAI">Use Real AI</Label>
+                  </div>
+                  <Button onClick={handleSaveSettings}>Save Settings</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
             <Button
               variant="ghost"
               size="sm"
               className="ml-2"
               title="Expand to AI Hub"
               onClick={() => {
-                // This assumes you have a prop for opening the AI hub
                 if (typeof window !== "undefined") {
-                  // Dispatch a custom event that the parent component can listen for
                   const event = new CustomEvent("openAIHub")
                   window.dispatchEvent(event)
                 }
@@ -342,11 +431,12 @@ export function AIChat({ selectedMatterId }: AIChatProps) {
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Ask a question..."
                 className="flex-1"
+                disabled={isProcessing}
               />
               <Button
                 type="submit"
                 size="icon"
-                disabled={!input.trim()}
+                disabled={!input.trim() || isProcessing}
                 className="bg-gradient-to-r from-primary to-primary/90 shadow-md hover:shadow-lg transition-all"
               >
                 <Send className="h-4 w-4" />
