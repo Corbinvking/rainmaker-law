@@ -3,7 +3,8 @@ import { OpenRouterMessage, AIResponse, OpenRouterConfig } from '@/types/ai'
 export class AIService {
   private apiKey: string | null = null
   private useRealAI: boolean = false
-  private readonly API_URL = 'https://api.openrouter.ai/api/v1/chat/completions'
+  private readonly API_URL = 'https://openrouter.ai/api/v1/chat/completions'
+
   private readonly SYSTEM_PROMPT = `You are a highly knowledgeable legal AI assistant with expertise in various areas of law. 
 Your role is to help legal professionals with tasks such as document drafting, legal research, case analysis, and client matters.
 Always maintain professional ethics and confidentiality. If you're unsure about any legal advice, make it clear that your responses 
@@ -11,27 +12,88 @@ should be reviewed by a qualified legal professional.`
 
   constructor() {
     if (typeof window !== 'undefined') {
-      this.useRealAI = window.localStorage.getItem('USE_REAL_AI') === 'true'
-      this.apiKey = window.localStorage.getItem('OPENROUTER_API_KEY')
+      this.useRealAI = localStorage.getItem('USE_REAL_AI') === 'true'
+      this.apiKey = localStorage.getItem('OPENROUTER_API_KEY')
     }
   }
 
   setApiKey(key: string) {
     this.apiKey = key
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('OPENROUTER_API_KEY', key)
-    }
+    localStorage.setItem('OPENROUTER_API_KEY', key)
   }
 
   setUseRealAI(use: boolean) {
     this.useRealAI = use
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('USE_REAL_AI', use.toString())
-    }
+    localStorage.setItem('USE_REAL_AI', use.toString())
   }
 
   isUsingRealAI(): boolean {
     return this.useRealAI && this.apiKey !== null
+  }
+
+  private async makeRequest(options: {
+    key: string;
+    messages: OpenRouterMessage[];
+    maxTokens?: number;
+  }) {
+    const { key, messages, maxTokens = 4000 } = options
+
+    const headers = {
+      'Authorization': `Bearer ${key}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
+      'X-Title': 'Rainmaker Law AI Assistant'
+    }
+
+    const body = {
+      model: 'openai/gpt-3.5-turbo',  // Using GPT-3.5 as confirmed working
+      messages,
+      max_tokens: maxTokens,
+      temperature: 0.7
+    }
+
+    try {
+      const response = await fetch(this.API_URL, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body)
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        console.error('API Error:', data)
+        throw new Error(data.error?.message || `Request failed: ${response.status}`)
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('API request failed:', error)
+      throw error
+    }
+  }
+
+  async verifyApiKey(key: string): Promise<{ isValid: boolean; error?: string }> {
+    if (!key?.trim()) {
+      return { isValid: false, error: 'API key is required' }
+    }
+
+    if (!key.startsWith('sk-or-')) {
+      return { isValid: false, error: 'Invalid API key format. Key should start with "sk-or-"' }
+    }
+
+    try {
+      await this.makeRequest({
+        key,
+        messages: [{ role: 'user' as const, content: 'Test' }],
+        maxTokens: 1
+      })
+      return { isValid: true }
+    } catch (error) {
+      return { 
+        isValid: false, 
+        error: error instanceof Error ? error.message : 'Failed to verify API key'
+      }
+    }
   }
 
   async sendMessage(messages: OpenRouterMessage[]): Promise<AIResponse> {
@@ -40,54 +102,23 @@ should be reviewed by a qualified legal professional.`
     }
 
     try {
-      // Add system message at the start if not present
+      // Add system prompt if not present
       const messageHistory = messages[0]?.role === 'system' 
         ? messages 
-        : [{ role: 'system', content: this.SYSTEM_PROMPT }, ...messages]
+        : [{ role: 'system' as const, content: this.SYSTEM_PROMPT }, ...messages]
 
-      const response = await fetch(this.API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
-          'HTTP-Referer': `${window?.location?.origin || 'https://rainmaker-law.com'}`,
-          'X-Title': 'Rainmaker Law AI Assistant'
-        },
-        body: JSON.stringify({
-          model: 'anthropic/claude-3-opus-20240229',
-          messages: messageHistory.map(msg => ({
-            role: msg.role,
-            content: msg.content
-          })),
-          temperature: 0.7,
-          max_tokens: 4000,
-          top_p: 0.95,
-          stream: false
-        })
+      return await this.makeRequest({
+        key: this.apiKey,
+        messages: messageHistory
       })
-
-      if (!response.ok) {
-        const error = await response.json()
-        console.error('OpenRouter API error:', error)
-        throw new Error(error.error?.message || 'Failed to get AI response')
-      }
-
-      const data = await response.json()
-      return {
-        id: data.id,
-        created: data.created,
-        model: data.model,
-        choices: data.choices
-      }
     } catch (error) {
-      console.error('Error calling OpenRouter API:', error)
-      throw error
+      console.error('Error sending message:', error)
+      return this.sendMockMessage()
     }
   }
 
   private async sendMockMessage(): Promise<AIResponse> {
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
     return {
       id: Date.now().toString(),
       created: Date.now(),
@@ -100,10 +131,5 @@ should be reviewed by a qualified legal professional.`
         finish_reason: "stop"
       }]
     }
-  }
-
-  async validateConfig(config: OpenRouterConfig): Promise<boolean> {
-    if (!this.apiKey) return false
-    return true
   }
 } 

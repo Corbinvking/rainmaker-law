@@ -247,9 +247,36 @@ export function AIChat({ selectedMatterId }: AIChatProps) {
     setIsNewConversation(true)
   }
 
-  const handleSaveSettings = () => {
-    aiService.current.setApiKey(apiKey)
-    aiService.current.setUseRealAI(useRealAI)
+  const handleSaveSettings = async () => {
+    setIsProcessing(true)
+    try {
+      const { isValid, error } = await aiService.current.verifyApiKey(apiKey)
+      if (isValid) {
+        aiService.current.setApiKey(apiKey)
+        aiService.current.setUseRealAI(useRealAI)
+        // Add a success message or toast here
+      } else {
+        // Show error message
+        console.error('API key verification failed:', error)
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          content: `Failed to verify API key: ${error || 'Unknown error'}`,
+          role: "assistant",
+          created_at: new Date()
+        }])
+        return
+      }
+    } catch (error) {
+      console.error('Error saving settings:', error)
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        content: 'Error saving settings. Please try again.',
+        role: "assistant",
+        created_at: new Date()
+      }])
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   return (

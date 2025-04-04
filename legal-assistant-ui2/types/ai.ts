@@ -20,8 +20,8 @@ export interface OpenRouterConfig {
   frequency_penalty?: number
   presence_penalty?: number
   system_prompt?: string
-  apiKey: string
-  useRealAI: boolean
+  apiKey?: string
+  useRealAI?: boolean
 }
 
 export interface AIResponse {
@@ -29,7 +29,10 @@ export interface AIResponse {
   created: number
   model: string
   choices: Array<{
-    message: OpenRouterMessage
+    message: {
+      role: "assistant"
+      content: string
+    }
     finish_reason: string
   }>
 }

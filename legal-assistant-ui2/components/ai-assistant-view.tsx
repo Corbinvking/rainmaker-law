@@ -132,9 +132,32 @@ export function AIAssistantView({ onClose, onSelectClient }: AIAssistantViewProp
   const filteredTools =
     activeCategory === "featured" ? aiTools : aiTools.filter((tool) => tool.category === activeCategory)
 
-  const handleSaveSettings = () => {
-    aiService.setApiKey(apiKey)
-    aiService.setUseRealAI(useRealAI)
+  const handleSaveSettings = async () => {
+    try {
+      const { isValid, error } = await aiService.verifyApiKey(apiKey)
+      if (isValid) {
+        aiService.setApiKey(apiKey)
+        aiService.setUseRealAI(useRealAI)
+        // Add a success message
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: 'API key verified and settings saved successfully.'
+        }])
+      } else {
+        // Show error message
+        console.error('API key verification failed:', error)
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `Failed to verify API key: ${error || 'Unknown error'}`
+        }])
+      }
+    } catch (error) {
+      console.error('Error saving settings:', error)
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: 'Error saving settings. Please try again.'
+      }])
+    }
   }
 
   const handleSendMessage = async () => {
