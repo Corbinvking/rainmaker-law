@@ -1,15 +1,9 @@
-import { OpenRouterMessage, AIResponse, OpenRouterConfig } from '../types/ai'
-
-declare global {
-  interface Window {
-    location: Location;
-  }
-}
+import { OpenRouterMessage, AIResponse, OpenRouterConfig } from '@/types/ai'
 
 export class AIService {
   private apiKey: string | null = null
   private useRealAI: boolean = false
-  private readonly API_URL = 'https://openrouter.ai/api/v1/chat/completions'
+  private readonly API_URL = 'https://api.openrouter.ai/api/v1/chat/completions'
   private readonly SYSTEM_PROMPT = `You are a highly knowledgeable legal AI assistant with expertise in various areas of law. 
 Your role is to help legal professionals with tasks such as document drafting, legal research, case analysis, and client matters.
 Always maintain professional ethics and confidentiality. If you're unsure about any legal advice, make it clear that your responses 
@@ -56,12 +50,15 @@ should be reviewed by a qualified legal professional.`
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.apiKey}`,
-          'HTTP-Referer': window.location.origin,
-          'X-Title': 'Legal Assistant AI'
+          'HTTP-Referer': `${window?.location?.origin || 'https://rainmaker-law.com'}`,
+          'X-Title': 'Rainmaker Law AI Assistant'
         },
         body: JSON.stringify({
           model: 'anthropic/claude-3-opus-20240229',
-          messages: messageHistory,
+          messages: messageHistory.map(msg => ({
+            role: msg.role,
+            content: msg.content
+          })),
           temperature: 0.7,
           max_tokens: 4000,
           top_p: 0.95,
@@ -72,7 +69,7 @@ should be reviewed by a qualified legal professional.`
       if (!response.ok) {
         const error = await response.json()
         console.error('OpenRouter API error:', error)
-        throw new Error(error.message || 'Failed to get AI response')
+        throw new Error(error.error?.message || 'Failed to get AI response')
       }
 
       const data = await response.json()

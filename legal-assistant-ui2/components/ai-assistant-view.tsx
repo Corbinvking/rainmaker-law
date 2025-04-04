@@ -6,6 +6,11 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
+import { AIService } from "@/lib/ai-service"
+import { OpenRouterMessage } from "@/types/ai"
 import {
   Send,
   FileText,
@@ -20,33 +25,11 @@ import {
   Briefcase,
   ArrowLeft,
   Paperclip,
-  Settings,
 } from "lucide-react"
-import { AIService } from "@/lib/ai-service"
-import { OpenRouterMessage } from "@/types/ai"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
-
-interface Message {
-  id: string
-  content: string
-  role: "user" | "assistant"
-  created_at: Date
-  attachments?: string[]
-}
 
 interface AIAssistantViewProps {
   onClose: () => void
   onSelectClient?: (clientId: string) => void
-  selectedTool?: string
 }
 
 // AI tools data
@@ -117,33 +100,32 @@ const recentQueries = [
   { id: "4", query: "Translate the Martinez agreement to Spanish", timestamp: "1 week ago" },
 ]
 
-export function AIAssistantView({ onClose, onSelectClient, selectedTool }: AIAssistantViewProps) {
+const aiService = new AIService()
+
+export function AIAssistantView({ onClose, onSelectClient }: AIAssistantViewProps) {
   const [activeView, setActiveView] = useState<"chat" | "tool" | "home">("home")
   const [activeTool, setActiveTool] = useState<string | null>(null)
   const [activeCategory, setActiveCategory] = useState<string>("featured")
   const [input, setInput] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
-  const [messages, setMessages] = useState<Message[]>([])
-  const [apiKey, setApiKey] = useState("")
+  const [messages, setMessages] = useState<OpenRouterMessage[]>([])
+  const [apiKey, setApiKey] = useState('')
   const [useRealAI, setUseRealAI] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const aiService = useRef(new AIService())
 
-  // Load AI settings on mount
   useEffect(() => {
+    // Load AI settings from localStorage
     if (typeof window !== 'undefined') {
-      const savedKey = window.localStorage.getItem('OPENROUTER_API_KEY') || ""
+      const savedApiKey = window.localStorage.getItem('OPENROUTER_API_KEY')
       const savedUseRealAI = window.localStorage.getItem('USE_REAL_AI') === 'true'
-      setApiKey(savedKey)
+      if (savedApiKey) setApiKey(savedApiKey)
       setUseRealAI(savedUseRealAI)
-      aiService.current.setApiKey(savedKey)
-      aiService.current.setUseRealAI(savedUseRealAI)
     }
   }, [])
 
-  // Scroll to bottom of messages when new message is added
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    // Scroll to bottom when messages change
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
   // Filter tools by category
@@ -151,60 +133,39 @@ export function AIAssistantView({ onClose, onSelectClient, selectedTool }: AIAss
     activeCategory === "featured" ? aiTools : aiTools.filter((tool) => tool.category === activeCategory)
 
   const handleSaveSettings = () => {
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('OPENROUTER_API_KEY', apiKey)
-      window.localStorage.setItem('USE_REAL_AI', useRealAI.toString())
-    }
-    aiService.current.setApiKey(apiKey)
-    aiService.current.setUseRealAI(useRealAI)
+    aiService.setApiKey(apiKey)
+    aiService.setUseRealAI(useRealAI)
   }
 
   const handleSendMessage = async () => {
-    if (!input.trim()) return
+    if (!input.trim() || isProcessing) return
 
-    // Add user message
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      content: input,
-      role: "user",
-      created_at: new Date(),
+    setIsProcessing(true)
+    const userMessage: OpenRouterMessage = {
+      role: 'user',
+      content: input
     }
 
-    setMessages((prev) => [...prev, userMessage])
-    setInput("")
-    setIsProcessing(true)
-
     try {
-      // Prepare messages for AI service
-      const messageHistory: OpenRouterMessage[] = messages.map(msg => ({
-        role: msg.role,
-        content: msg.content
-      }))
-      messageHistory.push({ role: "user", content: input })
+      setMessages(prev => [...prev, userMessage])
+      setInput('')
 
-      // Get AI response
-      const response = await aiService.current.sendMessage(messageHistory)
+      const response = await aiService.sendMessage([...messages, userMessage])
       
-      // Create AI message from response
-      const aiMessage: Message = {
-        id: response.id,
-        content: response.choices[0].message.content,
-        role: "assistant",
-        created_at: new Date(),
+      if (response.choices && response.choices.length > 0) {
+        const assistantMessage: OpenRouterMessage = {
+          role: 'assistant',
+          content: response.choices[0].message.content
+        }
+        setMessages(prev => [...prev, assistantMessage])
       }
-      
-      setMessages((prev) => [...prev, aiMessage])
     } catch (error) {
-      console.error('Error getting AI response:', error)
-      
-      // Fallback to mock response in case of error
-      const fallbackMessage: Message = {
-        id: Date.now().toString(),
-        content: "I apologize, but I'm having trouble processing your request. Could you please try again?",
-        role: "assistant",
-        created_at: new Date(),
+      console.error('Error sending message:', error)
+      const errorMessage: OpenRouterMessage = {
+        role: 'assistant',
+        content: 'I apologize, but I encountered an error processing your request. Please try again or check your settings.'
       }
-      setMessages((prev) => [...prev, fallbackMessage])
+      setMessages(prev => [...prev, errorMessage])
     } finally {
       setIsProcessing(false)
     }
@@ -217,22 +178,13 @@ export function AIAssistantView({ onClose, onSelectClient, selectedTool }: AIAss
     // Add welcome message for the selected tool
     const tool = aiTools.find((t) => t.id === toolId)
     if (tool) {
-      setMessages([
-        {
-          id: "welcome",
-          content: `Welcome to ${tool.title}. ${tool.description}. How can I assist you with this today?`,
-          role: "assistant",
-          created_at: new Date(),
-        },
-      ])
+      const welcomeMessage: OpenRouterMessage = {
+        role: "assistant",
+        content: `Welcome to ${tool.title}. ${tool.description}. How can I assist you with this today?`
+      }
+      setMessages([welcomeMessage])
     }
   }
-
-  useEffect(() => {
-    if (selectedTool) {
-      handleToolSelect(selectedTool)
-    }
-  }, [selectedTool])
 
   return (
     <div className="flex h-screen w-full flex-col bg-background text-foreground overflow-hidden">
@@ -256,42 +208,6 @@ export function AIAssistantView({ onClose, onSelectClient, selectedTool }: AIAss
         <Button variant="outline" onClick={onClose}>
           Return to Dashboard
         </Button>
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button variant="ghost" size="sm">
-              <Settings className="h-4 w-4" />
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>AI Settings</DialogTitle>
-              <DialogDescription>
-                Configure your OpenRouter API settings for AI chat functionality.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="apiKey">OpenRouter API Key</Label>
-                <Input
-                  id="apiKey"
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="Enter your OpenRouter API key"
-                />
-              </div>
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="useRealAI"
-                  checked={useRealAI}
-                  onCheckedChange={setUseRealAI}
-                />
-                <Label htmlFor="useRealAI">Use Real AI</Label>
-              </div>
-              <Button onClick={handleSaveSettings}>Save Settings</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
       </div>
 
       {activeView === "home" && (
@@ -387,74 +303,21 @@ export function AIAssistantView({ onClose, onSelectClient, selectedTool }: AIAss
         <div className="flex-1 flex flex-col overflow-hidden">
           <ScrollArea className="flex-1 p-4">
             <div className="max-w-3xl mx-auto space-y-4">
-              {messages.map((message) => (
-                <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div
-                    className={`max-w-[80%] rounded-lg p-4 ${
-                      message.role === "user" ? "bg-primary text-primary-foreground" : "bg-card"
-                    }`}
-                  >
-                    {message.role === "assistant" && (
-                      <div className="mb-2 flex items-center">
-                        <Avatar className="mr-2 h-6 w-6 bg-gray-700">
-                          <AvatarFallback>LA</AvatarFallback>
-                        </Avatar>
-                        <span className="text-xs font-medium">Legal Assistant</span>
+              {messages.map((message, index) => (
+                <Card key={index} className={`p-4 ${message.role === 'assistant' ? 'bg-secondary' : ''}`}>
+                  <div className="flex items-start space-x-4">
+                    <Avatar className="h-8 w-8">
+                      <div className="h-full w-full flex items-center justify-center bg-primary text-primary-foreground">
+                        {message.role === 'assistant' ? 'AI' : 'U'}
                       </div>
-                    )}
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-
-                    {message.attachments && message.attachments.length > 0 && (
-                      <div className="mt-3 space-y-2">
-                        {message.attachments.map((attachment, index) => (
-                          <div
-                            key={index}
-                            className="flex items-center rounded-md border border-border p-2 bg-background"
-                          >
-                            <FileText className="mr-2 h-4 w-4 text-primary" />
-                            <span className="text-xs font-medium flex-1">{attachment}</span>
-                            <div className="flex space-x-1">
-                              <Button variant="ghost" size="icon" className="h-6 w-6">
-                                <Download className="h-3 w-3" />
-                              </Button>
-                              <Button variant="ghost" size="icon" className="h-6 w-6">
-                                <Copy className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    <div
-                      className={`mt-1 text-right text-xs ${
-                        message.role === "user" ? "text-primary-foreground/70" : "text-muted-foreground"
-                      }`}
-                    >
-                      {message.created_at.toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                    </Avatar>
+                    <div className="flex-1 space-y-1">
+                      <p className="text-sm font-medium">{message.role === 'assistant' ? 'AI Assistant' : 'You'}</p>
+                      <p className="text-sm">{message.content}</p>
                     </div>
                   </div>
-                </div>
+                </Card>
               ))}
-              {isProcessing && (
-                <div className="flex justify-start">
-                  <div className="max-w-[80%] rounded-lg p-4 bg-[#1E2530]">
-                    <div className="mb-2 flex items-center">
-                      <Avatar className="mr-2 h-6 w-6 bg-gray-700">
-                        <AvatarFallback>LA</AvatarFallback>
-                      </Avatar>
-                      <span className="text-xs font-medium">Legal Assistant</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <p className="text-sm">Thinking...</p>
-                    </div>
-                  </div>
-                </div>
-              )}
               <div ref={messagesEndRef} />
             </div>
           </ScrollArea>
@@ -484,6 +347,47 @@ export function AIAssistantView({ onClose, onSelectClient, selectedTool }: AIAss
           </div>
         </div>
       )}
+
+      <div className="flex justify-between items-center p-4 border-t">
+        <h2 className="text-lg font-semibold">AI Settings</h2>
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>AI Settings</DialogTitle>
+              <DialogDescription>Configure your OpenRouter API settings</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="apiKey">OpenRouter API Key</Label>
+                <Input
+                  id="apiKey"
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="Enter your OpenRouter API key"
+                />
+              </div>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="useRealAI"
+                  checked={useRealAI}
+                  onCheckedChange={setUseRealAI}
+                />
+                <Label htmlFor="useRealAI">Use Real AI</Label>
+              </div>
+              <Button onClick={handleSaveSettings}>Save Settings</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   )
 }

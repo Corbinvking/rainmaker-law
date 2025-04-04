@@ -187,11 +187,6 @@ export function AIChat({ selectedMatterId }: AIChatProps) {
   // Filter conversations by matter
   const filteredConversations = conversations.filter((conv) => !activeMatterId || conv.matter_id === activeMatterId)
 
-  const handleSaveSettings = () => {
-    aiService.current.setApiKey(apiKey)
-    aiService.current.setUseRealAI(useRealAI)
-  }
-
   const handleSendMessage = async () => {
     if (!input.trim()) return
 
@@ -250,6 +245,11 @@ export function AIChat({ selectedMatterId }: AIChatProps) {
     setActiveConversationId(null)
     setMessages([])
     setIsNewConversation(true)
+  }
+
+  const handleSaveSettings = () => {
+    aiService.current.setApiKey(apiKey)
+    aiService.current.setUseRealAI(useRealAI)
   }
 
   return (
